@@ -47,25 +47,17 @@ echo "  ====移动jar包并改名===="
 
 cd /usr/local/xxx/webapps
 
-rm -rf ROOT.war                                                                                                                                                                                          
-
-cp /usr/local/xxx/web/target/xxx.war /usr/local/tomcat/webapps/;                                        
-
+rm -rf ROOT.war                                                                                                                                                                         cp /usr/local/xxx/web/target/xxx.war /usr/local/tomcat/webapps/;                                        
 mv xxx.war ROOT.war;                                                                     
 
                                                                                                                                                                                                     
 
-                                                                                                                       echo "  =====启动Java应用======"                                                                                       
-
-nohup /usr/local/tomcat/bin/startup.sh &                  
+echo "  =====启动Java应用======"                                                             nohup /usr/local/tomcat/bin/startup.sh &                  
 
                                                                                                                        
 
-#查看日志                                                                                                                                                                                                                 
-
-echo "  ===查看日志====";                                                                                                                                                                                
-
-tail -20f /tmp/logs/xxx.log;
+#查看日志               
+echo "  ===查看日志====";                                                                                                                                                              tail -20f /tmp/logs/xxx.log;
 
 ```
 

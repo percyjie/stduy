@@ -14,9 +14,8 @@ else
 
     echo "本次拉取的分支号是 $1"
 
-fi                                                                                
+fi  
 
-                                                                                                                       
 echo "  ====开始拉取仓库最新代码==== " 
 
 cd /usr/local/xxx;pwd; 
@@ -55,8 +54,6 @@ mv xxx.war ROOT.war;
 
 echo "  =====启动Java应用======"
 nohup /usr/local/tomcat/bin/startup.sh & 
-
-                                                                                                                       
 
 #查看日志               
 echo "  ===查看日志====";

@@ -101,6 +101,8 @@ tail -20f /tmp/logs/xxx.log;
 
 6.当服务数量增加，管理复杂性增加。
 
+
+
 ###3.Eureka 和 Zookeeper区别？
 
  1.Eureka是遵守AP原则
@@ -148,3 +150,95 @@ tail -20f /tmp/logs/xxx.log;
  因此，Eureka可以很好的应对因网络故障导致部分节点失去联系的情况，而不会像zk那样
 
    是整个注册服务瘫痪。
+
+### 3.dubbo自定义异常传递信息丢失问题解决
+
+目前计划对已有的单体项目进行组织架构拆分，调研了分布式系统中常用中间件 Dubbo 和 Spring Cloud，选择了 Dubbo，可以对当前现有项目进行平滑升级改造。但是一开始就遇到了麻烦，自定义异常在传递的过程中变成了 RuntimeException，统一异常处理 **GlobalExceptionHandler** 无法获取异常信息。
+
+## 问题重现
+
+项目进行统一异常处理，抽取了一个通用异常 **ServiceException**，此异常是非受检异常，即继承于 RuntimeException。调研时发现如果服务提供方即 provider 抛出了 **ServiceException** 异常，consumer 服务消费方就会收到一个 RuntimeException 异常，而 **ServiceException** 异常的内容被包含在了 RuntimeException 的异常堆栈中
+
+```
+[Request processing failed; nested exception is java.lang.RuntimeException: io.github.mosiki.common.exception.ServiceException: missing_required_parameters
+io.github.mosiki.common.exception.ServiceException: missing_required_parameters
+    at io.github.mosiki.provider.HelloService.sayHello(HelloService.java:20)
+    at com.alibaba.dubbo.common.bytecode.Wrapper1.invokeMethod(Wrapper1.java)
+```
+
+而我的统一异常处理是这样的，只处理 `ServiceException` 以及 `Exception`，因此就无法获取到原始异常的信息了。
+
+```
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ServiceException.class)
+    public Result handlerServiceException(ServiceException ex) {
+        return Result.failure(ex.getCode(), ex.getMessage());
+    }
+
+    @ExceptionHandler({Exception.class})
+    public Result handlerException(Exception ex) {
+        log.error("发生未知异常：{}", ex);
+        return Result.failure(HttpStatus.INTERNAL_SERVER_ERROR.value(), "服务器打了个小盹儿~请稍候再试");
+    }
+}
+```
+
+访问接口将返回如下，异常中原有信息丢失。
+![img](http://img12345.5-project.com/blog/20181211061411.png)
+
+上网搜索发现，这是因为 dubbo 的异常处理类 `com.alibaba.dubbo.rpc.filter.ExceptionFilter` 进行处理后的结果，Debug 之后确实如此，dubbo 在此进行了转换。
+![img](http://img12345.5-project.com/blog/20181211062145.png)
+
+## 问题解决之道
+
+现在我想要 provider 把自定义的异常原封不动的抛给 consumer 进行处理，于是有了如下思路：
+
+1. 禁用 provider 的 ExceptionFilter
+2. 让 GlobalExceptionHandler 处理 consumer 的异常
+
+按照此思路做就很简单了，网上大多文章的办法都比较麻烦，有用 AOP 处理的，甚至还有让自己修改编译源码上传私服的-_-||，本文给出比较简便的方法，提供参考。
+
+## 禁用provider的ExceptionFilter
+
+修改 provider 的配置，我这里使用 yml 配置文件，其他类型如 xml/properties 也同理，设置 provider 的 filter 为 **-exception**，这样异常就不会被处理而是直接抛出了。
+
+```
+dubbo:
+  application:
+    name: provider
+  protocol:
+    name: dubbo
+    port: 20100
+  registry:
+    address: 127.0.0.1:2181
+    protocol: zookeeper
+  provider:
+    filter: -exception
+```
+
+## GlobalExceptionHandler捕获ServiceException
+
+只是禁用了 provider 的 ExceptionHandler 还不能完全达到我们的目的，访问接口，provider 抛出异常 consumer 正确接收为 **ServiceException**。
+
+```
+[Request processing failed; nested exception is io.github.mosiki.common.exception.ServiceException: missing_required_parameters] with root cause
+
+io.github.mosiki.common.exception.ServiceException: missing_required_parameters
+    at io.github.mosiki.provider.HelloService.sayHello(HelloService.java:20) ~[na:na]
+    at com.alibaba.dubbo.common.bytecode.Wrapper1.invokeMethod(Wrapper1.java) ~[na:na]
+```
+
+我们处理一下 GlobalExceptionHandler。
+
+SpringBoot 主要这个启动类的位置和全局异常处理器的位置，一定要保证异常处理器在启动类的同级包或者在启动类的子包当中，否则异常处理器将不生效！
+![img](http://img12345.5-project.com/blog/20181211060804.png)
+
+## 效果展示
+
+以上两步完成后，重启服务，访问接口测试。
+![img](http://img12345.5-project.com/blog/20181211061223.png)
+
+拿到了 provider 抛出的原始自定义异常，如此问题就解决了。

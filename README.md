@@ -244,7 +244,7 @@ public class DubboExceptionFilter extends ExceptionFilter {
                     Throwable exception = result.getException();
 
                     // 自定义的异常
-                    if (exception instanceof YogoException){
+                    if (exception instanceof XxxException){
                         return result;
                     }
 
@@ -305,7 +305,7 @@ filter="dubboExceptionFilter,-exception"
 ### 并且自定义异常里面要加上无参构造
 
 ```java
-public xxxException(){
+public XxxException(){
 }
 ```
 
